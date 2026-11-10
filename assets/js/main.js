@@ -125,7 +125,12 @@ async function askModel(query, refs) {
 function localFallback(query) {
   const refs = retrieveAi(query, 3);
   const best = refs.find(function (c) { return c.cat === '常见问题'; }) || refs[0];
-  return { answer: best.text, refs: refs };
+  let answer = best.text;
+  // FAQ 片段的 text 以问题开头，卡片已有「问：」，这里去掉重复的问题。
+  if (best.cat === '常见问题' && answer.indexOf(best.title) === 0) {
+    answer = answer.slice(best.title.length).trim();
+  }
+  return { answer: answer, refs: refs };
 }
 // AI 回答卡片（问、答、参考来源、免责小字）。
 function renderAiCard(query, answer, refs, fallback) {
