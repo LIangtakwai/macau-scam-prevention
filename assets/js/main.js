@@ -440,7 +440,7 @@ function types() {
   main.append(cTrack);
 
   // ③ 高危信号（纯文字，保持紧凑）
-  blockHead('red-flags', '高危信号', '10 条 · 对上任意一条都要警惕');
+  blockHead('red-flags', '高危信号', content.redFlags.length + ' 条 · 对上任意一条都要警惕');
   const flags = el('div', 'flag-grid');
   (content.redFlags || []).forEach((r, i) => {
     const card = el('div', 'flag-card');
