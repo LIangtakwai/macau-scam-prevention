@@ -35,8 +35,8 @@
 - `assets/js/main.js`：四个页面的渲染、视频切换、关键词搜索、自测与 AI 提问逻辑。
 - `materials/content.js`：网页实际读取的文字材料，与界面代码分离，支持直接打开 HTML。
 - `materials/content.json`：同一内容的 JSON 备份，方便编辑或迁移，由 `scripts/sync_content.py` 同步。
-- `materials/ai-config.js`：AI 提问的接口配置（地址、代理、模型、上下文条数等），只在 FAQ 页加载；`apiKey` 现为空，密钥不写进仓库。
-- `worker/`：AI 问答的 Cloudflare Worker 代理源码与部署说明；密钥只存 Worker 环境变量，并带每日额度（默认全站 200 次/天、单 IP 30 次/天）。未部署时「AI 提问」只提示不可用，其余功能照常。
+- `materials/ai-config.js`：AI 提问的接口配置（地址、代理、模型、上下文条数等），只在 FAQ 页加载；当前为浏览器直连，`apiKey` 为明码 key，会随公开仓库与网页源码可见（项目组 2026-11-10 明确接受，见下文「AI 提问」）。
+- `worker/`：可选的 Cloudflare Worker 代理源码与部署说明；如换成代理模式，密钥只存 Worker 环境变量，并带每日额度（默认全站 200 次/天、单 IP 30 次/天）。
 - `materials/logos`、`materials/videos`：转换后的浏览器可用资源。
 - `materials/案例.docx`、`materials/诈骗类型.docx`：原始资料副本。
 - `防诈宣传资料来源与核查报告.docx`：黑白来源清单，列出 7 个案例、10 类诈骗及官方电话、法规、视频、B 站、AI 等全部来源与链接（2026-11-05）。详细比对版备份为 `防诈宣传资料来源与核查报告_详细版.docx`。
@@ -59,7 +59,7 @@
 - 只回答站内资料覆盖的问题；资料未覆盖时模型会明确说明并给出咨询热线，降低编造风险。
 - API 请求失败时自动降级：直接展示站内最相关的常见问题，页面仍可使用。
 - **每日额度**：Worker 默认全站 200 次/天、单 IP 30 次/天，按澳门时间 0 点重置；用完后返回 429，页面自动降级为站内检索，不会把额度刷爆。改额度、查看今日用量（`GET /quota`）与清零方法见 `worker/README.md`。
-- **密钥安全（重要）**：纯静态网站无法隐藏密钥，所以 `materials/ai-config.js` 现在不保存任何 key（`apiKey` 为空），AI 请求统一走 `worker/` 里的 Cloudflare Worker 代理：密钥只存在于 Worker 环境变量 `DEEPSEEK_API_KEY`，前端只拿到代理地址，部署与轮换步骤见 `worker/README.md`。若旧 key 曾写进文件、截图或部署过，必须到 [DeepSeek 开放平台](https://platform.deepseek.com/api_keys) 删除/重置——删文件不等于撤销。2026-11-05 核查发现该文件曾写入一枚明码 key，已清空，旧 key 需按上述步骤吊销。
+- **密钥与模式（重要）**：当前为浏览器直连，`materials/ai-config.js` 中写入明码 key，会随公开仓库和网页源码一起公开，任何访问者都能看到并直接调用——这是项目组 2026-11-10 明确接受的取舍。若要改成不公开的模式：按 `worker/README.md` 部署 Cloudflare Worker，把 `proxyUrl` 填成 Worker 地址、清空 `apiKey`，密钥只放 Worker 环境变量 `DEEPSEEK_API_KEY`。直连模式下建议定期更换 key（[DeepSeek 开放平台](https://platform.deepseek.com/api_keys)），换 key 时要改文件并重新部署。
 - **隐私说明**：只有点击「AI 提问」时，问题才会发送至 DeepSeek API；单纯输入关键词筛选问答在本地完成，不上传数据。
 - 回答由大模型生成，仅供参考，不构成法律建议；紧急情况请拨打报案热线 993。
 
@@ -98,4 +98,4 @@
 
 也可手动上传：将四个 HTML、`assets` 与 `materials` 放在同一目录即可。路径为相对路径，可部署在域名根目录或子目录。无需上传原始 `材料`、`.tools`、辅助脚本、报告或 QA 文件。
 
-线上 AI 提问未启用：`materials/ai-config.js` 的 `apiKey` 为空、`proxyUrl` 未填，点击“AI 提问”会提示不可用。如需启用，按 `worker/README.md` 部署 Cloudflare Worker（含 `QUOTA` KV，用于每日额度），把 `proxyUrl` 填成 Worker 地址，密钥只放在 Worker 环境变量。公开发布前建议核实案例出处及联系方式，并确认视频素材与校徽的使用授权。
+线上 AI 提问为浏览器直连：`materials/ai-config.js` 里的 key 会随网页公开，任何访问者都能看到。若要改成不公开的模式，按 `worker/README.md` 部署 Cloudflare Worker（含 `QUOTA` KV，用于每日额度），把 `proxyUrl` 填成 Worker 地址、清空 `apiKey`。公开发布前建议核实案例出处及联系方式，并确认视频素材与校徽的使用授权。
