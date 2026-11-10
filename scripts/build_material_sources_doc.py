@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""生成《材料出处清单》：只列网站材料与出处，不写内容、不做分析。
+"""生成《材料出处清单》（去重版）：同一出处只列一次，标注对应材料。
 
 运行：python scripts/build_material_sources_doc.py
 """
@@ -7,7 +7,6 @@ import json
 from pathlib import Path
 
 from docx import Document
-from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Cm, Pt, RGBColor
@@ -15,16 +14,14 @@ from docx.shared import Cm, Pt, RGBColor
 ROOT = Path(__file__).resolve().parents[1]
 DATA = json.loads((ROOT / 'materials' / 'content.json').read_text(encoding='utf-8'))
 OUT = ROOT / '材料出处清单.docx'
-BLACK = '000000'
 
 doc = Document()
 sec = doc.sections[0]
 sec.page_width, sec.page_height = Cm(21), Cm(29.7)
 sec.left_margin = sec.right_margin = Cm(2.0)
-sec.top_margin = Cm(1.9)
-sec.bottom_margin = Cm(1.8)
+sec.top_margin = Cm(1.8)
+sec.bottom_margin = Cm(1.7)
 
-# 常用来源：key -> (标题, 链接)
 S = {
     'md20251026': ('《澳门日报》2025-10-26 A02《港女生墮「公檢法」失八百萬》',
                    'https://appimg.modaily.cn/app/szb/pc/content/202510/26/content_442031.html'),
@@ -57,8 +54,6 @@ S = {
                 'https://www.gov.mo/zh-hant/services/ps-1911/'),
     'pj20240325': ('司法警察局《警情通告：提防假冒本地銀行貸款廣告 警惕釣魚網站以免誤墮騙局》2024-03-25',
                    'https://www.gov.mo/zh-hans/news/748837/'),
-    'pj20240409': ('司法警察局《司警局反詐程式正式上線 助公眾防範電訊網絡詐騙》2024-04-09',
-                   'https://www.gov.mo/zh-hant/news/1056801/'),
     'ex20261007': ('力报 2026-10-07《司警：提防抖音假客服詐騙 三周接獲25人報案失逾540萬》',
                    'https://www.exmoo.com/article/266439.html'),
     'deep2023': ('《互聯網信息服務深度合成管理規定》，2023-01-10 施行',
@@ -72,6 +67,8 @@ S = {
                  'https://ckyc.rc.um.edu.mo/student-life/student-caring-services/'),
     'umBulletin': ('澳門大學學生事務部《司法警察局－學校安全聯網通訊》2026-01-27',
                    'https://e-bulletin.um.edu.mo/notice/486001/'),
+    'pj20240409': ('司法警察局《司警局反詐程式正式上線 助公眾防範電訊網絡詐騙》2024-04-09',
+                   'https://www.gov.mo/zh-hant/news/1056801/'),
     'caseDoc': ('課程材料《案例.docx》（站內文件 materials/案例.docx）', ''),
     'typeDoc': ('課程材料《詐騙類型.docx》（站內文件 materials/詐騙類型.docx）', ''),
 }
@@ -99,6 +96,29 @@ TYPE_SRC = {
     10: ['deep2023', 'typeDoc'],
 }
 
+PHONE_KEYS = ['pjhotline', 'pjcrime05', 'umsec', 'ckyc', 'ckycCare', 'umBulletin', 'pj20240409']
+ORDER = [
+    'md20251026', 'gz20251027', 'md20230902', 'ex20230901', 'md20240112', 'md20230707',
+    'md20231024', 'md20230317', 'md20240424', 'md20220903', 'pj20201128', 'pj20241105',
+    'pj20241118', 'law2024', 'law2012', 'pj20240325', 'ex20261007', 'deep2023',
+    'pjhotline', 'pjcrime05', 'umsec', 'ckyc', 'ckycCare', 'umBulletin', 'pj20240409',
+    'caseDoc', 'typeDoc',
+]
+
+uses = {k: [] for k in ORDER}
+for i, keys in CASE_SRC.items():
+    for k in keys:
+        label = f'案例 {i}'
+        if label not in uses[k]:
+            uses[k].append(label)
+for i, keys in TYPE_SRC.items():
+    for k in keys:
+        label = f'类型 {i}'
+        if label not in uses[k]:
+            uses[k].append(label)
+for k in PHONE_KEYS:
+    uses[k].append('求助页')
+
 
 def set_cn(run, font='宋体'):
     run.font.name = font
@@ -115,7 +135,7 @@ def run(p, text, size=9.2, bold=False, font='宋体'):
 
 
 def P(text='', size=9.2, bold=False, font='宋体', before=0, after=2, left=0,
-      first=0, line=1.3, keep=False):
+      first=0, line=1.28, keep=False):
     p = doc.add_paragraph()
     pf = p.paragraph_format
     pf.space_before = Pt(before); pf.space_after = Pt(after); pf.line_spacing = line
@@ -134,95 +154,65 @@ def H1(text):
     return P(text, size=12.5, bold=True, font='黑体', before=8, after=2, keep=True)
 
 
-def H2(text):
-    return P(text, size=9.8, bold=True, font='黑体', before=4, after=1, keep=True)
+def url_line(url, size=8.2):
+    q = P('', size=size, left=1.0, after=2)
+    r = q.add_run(url)
+    r.font.size = Pt(size)
+    r.font.color.rgb = RGBColor(0, 0, 0)
+    set_cn(r)
 
 
-def src(key, size=8.6):
-    title, url = S[key]
-    p = P('出处：' + title, size=size, left=0.5, after=0)
-    if url:
-        q = P('', size=8.2, left=0.9, after=1)
-        r = q.add_run(url)
-        r.font.size = Pt(8.2)
-        r.font.color.rgb = RGBColor(0, 0, 0)
-        set_cn(r)
-    return p
-
-
-# 标题
 P('材料出处清单', size=17, bold=True, font='黑体', after=2)
 P('澳门书院防诈宣传网站（CPED2001 第 11 组 · Scam Prevention Campaign）', size=9, after=1)
-P('整理日期：2026-11-10　　链接访问日期：2026-11-05', size=8.6, after=6)
-P('说明：本清单只列网站所用材料与出处，不写材料内容。未注明出处的文字为本组原创。', size=9, after=6)
+P('整理日期：2026-11-10　　链接访问日期：2026-11-05', size=8.6, after=5)
+P('说明：同一出处只列一次，后面标注对应的材料；未注明出处的内容为本组原创。', size=9, after=6)
 
-H1('一、案例')
-for i, c in enumerate(DATA['cases'], 1):
-    H2(f'案例 {i}：{c["title"].split("：", 1)[1]}')
-    for k in CASE_SRC[i]:
-        src(k)
+H1('一、文字与官方来源')
+n = 0
+for key in ORDER:
+    if not uses[key]:
+        continue
+    n += 1
+    title, url = S[key]
+    p = P('', size=9.0, left=0.9, first=-0.9, after=0)
+    run(p, f'[{n}] ', size=9.0, bold=True)
+    run(p, title + f'（对应：{"、".join(uses[key])}）', size=9.0)
+    if url:
+        url_line(url)
 
-H1('二、诈骗类型')
-for i, t in enumerate(DATA['types'], 1):
-    H2(f'类型 {i}：{t["short"]}')
-    for k in TYPE_SRC[i]:
-        src(k)
-
-H1('三、宣传视频与封面')
-H2('视频 1–4（materials/videos/video-1.mp4–video-4.mp4）')
-P('出处：澳门官方防诈骗宣传网站。', size=9, left=0.5, after=1)
-P('原始 MOV 由课程材料提供，本站用 scripts/prepare_videos.py 转为 H.264/AAC MP4。', size=8.6, left=0.5, after=3)
-H2('视频封面、类型封面、案例封面（materials/covers、materials/videos/poster-*.jpg）')
-P('出处：同上，均为上述澳门官方防诈骗宣传视频的截帧。', size=9, left=0.5, after=3)
-
-H1('四、B 站延伸视频（27 条）')
+H1('二、B 站视频')
 for t in DATA['types']:
-    P(f'类型「{t["short"]}」：', size=8.8, bold=True, before=2, after=1)
     for b in t['bili']:
-        P(f'《{b["title"]}》　{b["author"]}　{b["duration"]}', size=8.8, left=0.4, after=0)
-        q = P('', size=8.0, left=0.8, after=2)
-        r = q.add_run(b['url']); r.font.size = Pt(8.0); r.font.color.rgb = RGBColor(0, 0, 0); set_cn(r)
+        n += 1
+        p = P('', size=8.9, left=0.9, first=-0.9, after=0, before=2)
+        run(p, f'[{n}] ', size=8.9, bold=True)
+        run(p, f'《{b["title"]}》　{b["author"]}　{b["duration"]}（对应：类型「{t["short"]}」）', size=8.9)
+        url_line(b['url'], size=7.9)
 
-H1('五、图片与标志')
-H2('澳门大学标志（materials/logos/um-mark.png、um-white.png）')
-P('出处：澳门大学校徽，由课程材料提供；版权归澳门大学。', size=9, left=0.5, after=3)
-H2('蔡继有书院标志（materials/logos/ckyc.png、ckyc-white.png）')
-P('出处：蔡继有书院院徽，由课程材料提供；版权归蔡继有书院。', size=9, left=0.5, after=3)
-H2('favicon.svg')
-P('出处：本组制作。', size=9, left=0.5, after=3)
-
-H1('六、官方电话与链接')
-phones = [
-    ('司警局报案热线 993', 'pjhotline'),
-    ('司警局防诈骗查询热线 8800 7777', 'pjcrime05'),
-    ('澳门大学保安紧急热线 8822 4000；保安及设施服务处 8822 4126', 'umsec'),
-    ('蔡继有书院办公室 8822 9400；书院邮箱 ckycollege@um.edu.mo', 'ckyc'),
-    ('蔡继有书院保安值班 6332 4946；学术人员当值 6392 9984；紧急求助 999/110/112', 'ckycCare'),
-    ('澳大学生事务部 8822 4901、sao@um.edu.mo', 'umBulletin'),
-    ('司警局反诈程式（经微信公众号 PJ_Macao 进入）', 'pj20240409'),
-]
-for name, key in phones:
-    H2(name)
-    src(key, size=8.4)
-
-H1('七、法规')
-for k in ['law2024', 'law2012', 'deep2023']:
-    src(k)
-
-H1('八、AI 问答')
-H2('DeepSeek API（模型 deepseek-chat）')
-P('出处：DeepSeek 开放平台 https://platform.deepseek.com/（访问日期：2026-11-10）。'
-  '网站 AI 回答由该服务生成。', size=9, left=0.5, after=3)
-
-H1('九、本组原创（无外部出处）')
-for item in [
-    '常见问题 35 条、高危信号 14 条、名词解释 15 个、模拟帖子 6 个、自测题 5 道；',
-    '案例 4–6 的教学化改写，以及所有案例的“套路重点/防范提示”；',
-    '各诈骗类型的“提醒”措辞、页面导语、按钮文案与结构安排；',
-    '四个页面的 HTML、CSS、JavaScript 代码与界面设计；',
-    '案例 1、2、3、7 中依据报道重写的叙述（事实来自对应报道，文字为本组改写）。',
+H1('三、宣传视频、封面与标志')
+n += 1
+p = P('', size=9.0, left=0.9, first=-0.9, after=0)
+run(p, f'[{n}] ', size=9.0, bold=True)
+run(p, '澳门官方防诈骗宣传网站（对应：视频 1–4，以及视频封面、类型封面、案例封面）', size=9.0)
+for label, text in [
+    ('澳门大学标志', '澳门大学校徽，由课程材料提供（materials/logos/um-mark.png、um-white.png）'),
+    ('蔡继有书院标志', '蔡继有书院院徽，由课程材料提供（materials/logos/ckyc.png、ckyc-white.png）'),
 ]:
-    p = P('· ' + item, size=9, left=0.45, first=-0.3, after=1)
+    n += 1
+    p = P('', size=9.0, left=0.9, first=-0.9, after=0, before=2)
+    run(p, f'[{n}] ', size=9.0, bold=True)
+    run(p, label + '：' + text, size=9.0)
+
+H1('四、AI 问答')
+n += 1
+p = P('', size=9.0, left=0.9, first=-0.9, after=0)
+run(p, f'[{n}] ', size=9.0, bold=True)
+run(p, 'DeepSeek API（模型 deepseek-chat），https://platform.deepseek.com/（访问日期：2026-11-10）', size=9.0)
+
+H1('五、本组原创（无外部出处）')
+P('常见问题 35 条、高危信号 14 条、名词解释 15 个、模拟帖子 6 个、自测题 5 道；'
+  '案例 4–6 的教学化改写、各案例的“套路重点/防范提示”、各类型的“提醒”措辞；'
+  '页面文案、四个页面的 HTML/CSS/JavaScript 代码与界面设计。', size=9.0, after=3)
 
 cp = doc.core_properties
 cp.title = '材料出处清单'
