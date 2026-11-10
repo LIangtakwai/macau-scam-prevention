@@ -123,7 +123,11 @@ async function askModel(query, refs) {
 }
 // 本地兜底：AI 不可用时展示站内最相关的常见问题。
 function localFallback(query) {
-  const refs = retrieveAi(query, 3);
+  const all = retrieveAi(query, 8);
+  // 参考来源优先放问答，其次才是类型/案例，避免整段案例挤掉更贴题的问答。
+  const faqRefs = all.filter(function (c) { return c.cat === '常见问题'; }).slice(0, 2);
+  const otherRefs = all.filter(function (c) { return c.cat !== '常见问题'; });
+  const refs = faqRefs.concat(otherRefs).slice(0, 3);
   const best = refs.find(function (c) { return c.cat === '常见问题'; }) || refs[0];
   let answer = best.text;
   // FAQ 片段的 text 以问题开头，卡片已有「问：」，这里去掉重复的问题。
