@@ -1,0 +1,22 @@
+name = "macau-antifraud-ai"
+main = "worker.js"
+compatibility_date = "2026-01-01"
+
+# 允许调用代理的站点来源，逗号分隔。改完重新 wrangler deploy 生效。
+[vars]
+ALLOWED_ORIGINS = "https://liangtakwai.github.io,https://zhuolin272-dotcom.github.io,http://localhost:8000,http://127.0.0.1:8000,http://localhost:5500,http://127.0.0.1:5500"
+
+# 每日额度（澳门时间 0 点重置），单位是“调用次数”。改完 wrangler deploy。
+# DAILY_LIMIT    全站每天最多多少次；
+# IP_DAILY_LIMIT 单个 IP 每天最多多少次（校园网 NAT 会让很多人共用一个出口 IP，
+#                课堂演示时若全班一起用，可临时调大，比如 80）。
+DAILY_LIMIT = "200"
+IP_DAILY_LIMIT = "30"
+
+# 每日额度计数需要 KV。先执行：
+#   wrangler kv namespace create QUOTA
+# 把输出里的 id 填到下面，取消注释，再 wrangler deploy。
+# 绑定名必须是 QUOTA，worker.js 里用的是 env.QUOTA。
+# [[kv_namespaces]]
+# binding = "QUOTA"
+# id = "把这里换成 wrangler kv namespace create QUOTA 输出的 id"
