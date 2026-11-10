@@ -5,6 +5,7 @@
 运行：python scripts/build_materials_combined_doc.py
 """
 from pathlib import Path
+import json
 
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -111,8 +112,71 @@ p = doc.add_paragraph()
 p.paragraph_format.space_after = Pt(1)
 r = p.add_run('材料文件合集')
 set_fonts(r, ascii_font='黑体', east='黑体', size=12, bold=True)
-line('案例.docx · 诈骗类型.docx · ai-config.js · content.js · content.json　（2026-11-10）', size=7.2, after=2)
+line('案例.docx · 诈骗类型.docx · ai-config.js（文本）· content.js（文本）· content.json（文本）　（2026-11-10）', size=7.2, after=2)
 rule()
+
+def load_obj(path):
+    """读取 js/json 文件里的对象（js 取第一个 { 到最后一个 }）。"""
+    if path.suffix == '.json':
+        return json.loads(path.read_text(encoding='utf-8'))
+    text = path.read_text(encoding='utf-8')
+    return json.loads(text[text.index('{'): text.rindex('}') + 1])
+
+
+def _scalar(v):
+    if isinstance(v, bool):
+        return '是' if v else '否'
+    if v is None:
+        return '（空）'
+    return str(v).replace('\n', ' ')
+
+
+def dump(value, indent, key, out):
+    """把 JSON 结构转成「键：值」文本，去掉大括号和引号。"""
+    pad = '  ' * indent
+    if isinstance(value, dict):
+        if key is not None:
+            out.append(f'{pad}{key}：')
+            indent += 1
+            pad = '  ' * indent
+        for k, v in value.items():
+            dump(v, indent, k, out)
+    elif isinstance(value, list):
+        if not value:
+            out.append(f'{pad}{key}：（空）')
+            return
+        if all(not isinstance(x, (dict, list)) for x in value):
+            joined = '；'.join(_scalar(x) for x in value)
+            if len(joined) <= 120:
+                out.append(f'{pad}{key}：{joined}')
+            else:
+                out.append(f'{pad}{key}：')
+                for x in value:
+                    out.append(f'{pad}  - {_scalar(x)}')
+            return
+        out.append(f'{pad}{key}：')
+        for i, item in enumerate(value, 1):
+            # 只在类型/案例/问答等大条目之间空一行；stats、members 等小条目保持紧凑。
+            complex_item = isinstance(item, dict) and any(isinstance(v, (dict, list)) for v in item.values())
+            if i > 1 and indent == 0 and (key in ('types', 'cases', 'faq', 'glossary', 'posts') or complex_item):
+                out.append('')
+            if isinstance(item, dict):
+                simple = {k: v for k, v in item.items() if not isinstance(v, (dict, list))}
+                complex_ = {k: v for k, v in item.items() if isinstance(v, (dict, list))}
+                if simple:
+                    head = '；'.join(f'{k}：{_scalar(v)}' for k, v in simple.items())
+                    out.append(f'{pad}  {i}. {head}')
+                else:
+                    out.append(f'{pad}  {i}.')
+                for k, v in complex_.items():
+                    dump(v, indent + 2, k, out)
+            elif isinstance(item, list):
+                dump(item, indent + 1, f'{i}', out)
+            else:
+                out.append(f'{pad}  {i}. {_scalar(item)}')
+    else:
+        out.append(f'{pad}{key}：{_scalar(value)}')
+
 
 FILES = [
     ('案例.docx', ROOT / 'materials' / '案例.docx', 'docx'),
@@ -123,17 +187,18 @@ FILES = [
 ]
 
 for i, (name, path, kind) in enumerate(FILES, 1):
-    file_head(name, i)
-    lines = docx_lines(path) if kind == 'docx' else raw_lines(path)
+    file_head(name if kind == 'docx' else name + '（文本）', i)
     if kind == 'docx':
-        for t in lines:
+        for t in docx_lines(path):
             line(t, size=BODY_SIZE, line_spacing=Pt(8.0))
     else:
-        for t in lines:
-            # 用不换行空格保留 JSON 的缩进，避免 Word 吞掉行首空格。
+        out = []
+        dump(load_obj(path), 0, None, out)
+        for t in out:
+            # 用不换行空格保留层级缩进，避免 Word 吞掉行首空格。
             indent = len(t) - len(t.lstrip(' '))
             text = '\u00A0' * indent + t[indent:]
-            line(text, size=CODE_SIZE, ascii_font='Menlo', east='宋体', line_spacing=Pt(7.0))
+            line(text, size=BODY_SIZE, line_spacing=Pt(8.0))
 
 # 页脚页码
 fp = sec.footer.paragraphs[0]
