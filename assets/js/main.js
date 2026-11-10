@@ -68,9 +68,12 @@ function buildAiChunks() {
   });
 }
 // 本地检索：二元组重合度 + 标题命中 + 原文包含加分，返回最相关片段。
+const QUERY_STOP_GRAMS = ['怎么', '么办', '如何', '什么', '为什', '可以', '是否', '应该', '需要', '请问', '一下', '我的', '我要', '这个', '那个'];
 function retrieveAi(query, topN) {
   if (!aiChunks) aiChunks = buildAiChunks();
   const q = aiTokenize(query);
+  // 去掉「怎么办/如何/可以」这类疑问词，避免它们压过「被骗/兼职/验证码」等关键词。
+  QUERY_STOP_GRAMS.forEach(function (g) { q.delete(g); });
   const scored = aiChunks.map(function (c) {
     let score = 0;
     q.forEach(function (g) { if (c.grams.has(g)) score += 1; });
@@ -466,9 +469,20 @@ function faq() {
   main.append(row, aiArea, status, results);
   function render() {
     const keyword = input.value.trim().toLocaleLowerCase();
-    const matches = content.faq.filter(x => (x.question + ' ' + x.answer).toLocaleLowerCase().includes(keyword));
+    let matches = content.faq.filter(x => (x.question + ' ' + x.answer).toLocaleLowerCase().includes(keyword));
+    let fuzzy = false;
+    // 自然语言问句（如「被骗了怎么办」）很少有完全匹配：用站内相关度算法补一轮推荐。
+    if (keyword && !matches.length) {
+      const titles = new Set(retrieveAi(keyword, 12)
+        .filter(x => x.cat === '常见问题')
+        .map(x => x.title));
+      matches = content.faq.filter(x => titles.has(x.question));
+      fuzzy = matches.length > 0;
+    }
     clear.hidden = !keyword;
-    status.textContent = keyword ? `找到 ${matches.length} 个相关问答` : `全部 ${content.faq.length} 个问答`;
+    status.textContent = keyword
+      ? (matches.length ? `找到 ${matches.length} 个相关问答${fuzzy ? '（按相关度推荐）' : ''}` : '找到 0 个相关问答')
+      : `全部 ${content.faq.length} 个问答`;
     results.replaceChildren();
     matches.forEach(item => {
       const d = el('details', 'faq-item'); d.open = false;
@@ -488,10 +502,19 @@ function faq() {
     aiArea.hidden = false; aiArea.replaceChildren();
     const aiStatus = el('p', 'ai-status', '正在检索站内资料并生成回答…');
     aiArea.append(aiStatus);
-    if (!cfg) { aiStatus.textContent = '未加载 AI 配置（materials/ai-config.js），无法使用 AI 提问。'; return; }
+    if (!cfg) {
+      const fb = localFallback(query);
+      aiArea.replaceChildren(renderAiCard(query, fb.answer, fb.refs, true));
+      aiArea.append(el('p', 'ai-error', '未加载 AI 配置（materials/ai-config.js），已切换为站内资料检索结果；紧急情况请拨打 993。'));
+      render();
+      return;
+    }
     const viaProxy = !!(cfg.proxyUrl && String(cfg.proxyUrl).trim());
     if (!viaProxy && !String(cfg.apiKey || '').trim()) {
-      aiStatus.textContent = 'AI 提问暂未开启（未配置后端代理），可先使用下方站内问答检索；紧急情况请拨打 993。';
+      const fb = localFallback(query);
+      aiArea.replaceChildren(renderAiCard(query, fb.answer, fb.refs, true));
+      aiArea.append(el('p', 'ai-error', 'AI 提问未开启（未配置密钥或代理），已切换为站内资料检索结果；紧急情况请拨打 993。'));
+      render();
       return;
     }
     aiBusy = true; ask.disabled = true; ask.textContent = '思考中…';
